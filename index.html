@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File explorer</title>
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="min-h-screen relative">
+
+    <!-- Login -->
+    <section class="min-h-screen fixed top-0 left-0 w-full bg-white flex items-center justify-center" id='login-section'>
+        <div class="w-64 mx-auto">
+            <div class="mb-4">
+                <label for="username" class="text-xs block mb-1 text-gray-600">Username</label>
+                <input type="text" name="username" id="username" class="border border-gray-200 bg-gray-50 rounded-md py-1 px-4 w-full">
+            </div>
+            <div class="mb-4">
+                <label for="pass" class="text-xs block mb-1 text-gray-600">Password</label>
+                <input type="password" name="pass" id="password" class="border border-gray-200 bg-gray-50 rounded-md py-1 px-4 w-full">
+            </div>
+            <button 
+                class="bg-indigo-600 text-white w-full text-sm px-4 py-2 rounded-md hover:bg-indigo-700 mr-4"
+                onclick="login()"
+            >
+                Login
+        </button>
+        </div>
+    </section>
+    
+    <!-- Create folder modal -->
+    <div
+        id="modal"
+        style="background-color: rgba(0, 0, 0, 0.7);" 
+        class="fixed top-0 left-0 h-full pt-32 py-32 w-full flex justify-center hidden modal">
+
+    </div>
+    
+
+    <main class="container mx-auto pt-32 pb-16">
+        <div class="mb-4 flex flex-wrap justify-between">
+            <div>
+                <button 
+                    class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-md hover:bg-indigo-700 mr-4"
+                    onclick="openModal('newFolder')">
+                    Add new folder
+                </button>
+                <button 
+                    class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-md hover:bg-indigo-700 mr-4"
+                    onclick="openModal('uploadFile')">
+                    Upload file
+                </button>
+            </div>
+            <button 
+                class="bg-red-500 text-white text-sm px-4 py-2 rounded-md hover:bg-red-600 mr-4"
+                onclick="logout()">
+                Logout
+            </button>
+        </div>
+        <div class="flex flex-col">
+            <div class="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                <div class="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
+                    <div class="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-indigo-600">
+                                <tr>
+                                    <th scope="col" class="px-6 py-2 text-left text-xs font-medium text-white tracking-wider" id="breadcrumbs">
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200" id='tbody'>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script>
+        /*
+        * Global state that controls this app
+        */
+        let state = {
+            auth: localStorage.getItem('auth') ? localStorage.getItem('auth') : false,
+            current_path: '/',
+            home_path: '/',
+            folders: [],
+            files: [],
+            authToken: localStorage.getItem('authToken') ? localStorage.getItem('authToken') : false,
+        };
+
+        /*
+        * Action constants
+        */
+        const ACTION = {
+            CD: 'cd',
+            MKDIR: 'mkdir',
+            UNLINK: 'unlink',
+            DOWNLOAD: 'download',
+            UPLOAD: 'upload',
+            LOGIN: 'login',
+            LOGOUT: 'logout'
+        };
+        
+        /*
+        * Global state mutators
+        */
+        function setStateCurrentPath(path) {
+            return state.current_path = path;
+        }
+
+        function setStateFolders(folders) {
+            return state.folders = folders;
+        }
+
+        function setStateFiles(files) {
+            return state.files= files;
+        }
+
+        function setStateAuth(auth) {
+            return state.auth= auth;
+        }
+
+        function setStateAuthToken(token) {
+            return state.authToken= token;
+        }
+
+        /*
+        * Login
+        */
+        async function login() {
+            const username = document.querySelector('#username').value;
+            const password = document.querySelector('#password').value;
+            const loginSection = document.querySelector('#login-section');
+
+            const form = new FormData();
+
+            if(username.trim().length <= 0 || password.trim().length <= 0) {
+                return alert('please enter correct login details');
+            }
+
+            form.set('username', username);
+            form.set('password', password);
+            form.set('action', ACTION.LOGIN);
+
+            await fetch('file_manager.php', {
+                method: 'POST',
+                body: form
+            })
+            .then(res => res.json())
+            .then(data => {
+
+                if (data.success) {
+                    setStateAuth(true);
+                    setStateAuthToken(data.data.authToken);
+                    localStorage.setItem('authToken', data.data.authToken);
+                    localStorage.setItem('auth', true);
+                    changeDirectory(state.home_path);
+                    loginSection.classList.add('hidden');
+                }
+
+                if (!data.success) alert('incorrect username/password');
+
+            });
+        }
+
+        /*
+        * Logout
+        */
+        async function logout() {
+            const form = new FormData();
+            form.set('action', ACTION.LOGOUT);
+
+            fetch('/file_manager.php', {
+                method: "POST",
+                body: form
+            });
+
+            const loginSection = document.querySelector('#login-section');
+            loginSection.classList.remove('hidden');
+
+            setStateAuth(false);
+            setStateCurrentPath('/');
+            setStateFiles([]);
+            setStateFolders([]);
+            localStorage.setItem('auth', false);
+            localStorage.removeItem('authToken');
+
+            createTableContent()
+        }
+
+        /*
+        * Move one folder backwards
+        */
+        function goBack() {
+            let path = state.current_path.split('/');
+
+            path.splice(-2, 2);
+            path = path.join('/');
+
+            setStateCurrentPath((path + '/'));
+            changeDirectory(state.current_path)
+        }
+
+        /*
+        * Move one folder forwards
+        */
+        function goTo(path) {
+            setStateCurrentPath((state.current_path + path));
+            changeDirectory(state.current_path);
+        }
+
+        /*
+        * Move between directories
+        */
+        async function changeDirectory(path) {
+            console.log(state);
+            const form = new FormData();
+            form.set('path', path);
+            form.set('action', ACTION.CD);
+            form.set('authToken', state.authToken);
+            
+            await fetch('file_manager.php', {
+                method: 'POST',
+                body: form
+            })
+            .then(res => res.json())
+            .then(data => {
+                setStateFolders(data.data.folders);
+                setStateFiles(data.data.files);
+                createTableContent(state.folders, state.files);
+            })
+            .catch(err => console.log(err));
+        }
+
+        /*
+        * Create new file/folder
+        */
+        async function createNew(type) {
+            const input = document.querySelector('#createNewInput').value;
+            const errorMsg = document.querySelector('#inputError');
+            
+            const form = new FormData();
+
+            if (input.trim().length > 0 && !state.folders.includes(input.trim()))
+            {
+                if (type === 'folder') {
+                    form.set('path', state.current_path);
+                    form.set('action', ACTION.MKDIR);
+                    form.set('new_folder_name', input);
+                    form.set('authToken', state.authToken);
+                    
+                    await fetch('file_manager.php', {
+                        method: 'POST',
+                        body: form
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        setStateFolders(data.data.folders);
+                        setStateFiles(data.data.files);
+                        createTableContent(state.folders, state.files);
+                    })
+                    .catch(err => console.error(err))
+                }
+                
+                closeModal();
+            } else {
+                errorMsg.textContent = 'Folder with this name already exist';
+                errorMsg.classList.remove('hidden');
+            }
+
+            if(input.trim().length <= 0) {
+                errorMsg.textContent = 'Enter valid folder name';
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        /*
+        * Delete file
+        */
+        async function deleteFile(filename) {
+            const form = new FormData();
+
+            const file_path = state.current_path + filename;
+
+            if( file_path !== '/index.html' && file_path !== '/Readme.md' && file_path !== '/file_manager.php')
+            {
+                if (state.files.includes(filename)) {
+                    form.set('path', state.current_path);
+                    form.set('action', ACTION.UNLINK);
+                    form.set('filename', filename);
+                    form.set('authToken', state.authToken);
+    
+                    await fetch('file_manager.php', {
+                        method: 'POST',
+                        body: form
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        setStateFolders(data.data.folders);
+                        setStateFiles(data.data.files);
+                        createTableContent(state.folders, state.files);
+                    })
+                    .catch(err => console.error(err))
+                }
+            }
+        }
+
+        /*
+        * Download file 
+        */
+        async function downloadFile(file) {
+            const form = new FormData();
+            form.set('path', state.current_path);
+            form.set('action', ACTION.DOWNLOAD);
+            form.set('authToken', state.authToken);
+            form.set('filename', file)
+
+            await fetch('file_manager.php', {
+                method: 'POST',
+                body: form
+            })
+            .then(res => res.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+
+                a.style.display = 'none';
+                a.href = url;
+                a.download = file;
+
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => console.error(err))
+        }
+        
+        /*
+        * Upload file 
+        */
+        async function uploadFile() {
+            const fileToUpload = document.querySelector('#uploadFileInput').files;
+
+            if(state.files.includes(fileToUpload[0].name)) {
+                alert('File with this name already exist');
+            } else {
+                const form = new FormData();
+                form.set('path', state.current_path);
+                form.set('action', ACTION.UPLOAD);
+                form.set('authToken', state.authToken);
+                form.set('file', fileToUpload[0])
+    
+                await fetch('file_manager.php', {
+                    method: 'POST',
+                    body: form
+                })
+                .then(res => res.json())
+                .then(data => {
+                    setStateFolders(data.data.folders);
+                    setStateFiles(data.data.files);
+    
+                    createTableContent(state.folders, state.files);
+                })
+                .catch(err => console.error(err));
+    
+                closeModal();
+            }
+
+        }   
+
+        /*
+        * DOM FUNCTIONS
+        */
+        function openModal(type) {
+            const modalDiv = document.querySelector('#modal');
+
+            modalDiv.classList.remove('hidden');
+            modalDiv.innerHTML = `
+                <div class="w-full max-w-xl">
+                    <div class="bg-white p-4 rounded-lg">
+                        <div class="w-full flex items-center justify-between mb-2">
+                            <span class="text-base font-medium">
+                                ${type === 'newFolder' ? 'Create new folder' : ''}
+                                ${type === 'uploadFile' ? 'Upload new file' : ''}
+                            </span>
+                            <button class="text-gray-400 hover:text-gray-600" onclick="closeModal()">
+                                <svg 
+                                    class="w-6 h-6" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24" 
+                                    xmlns="http://www.w3.org/2000/svg">
+                                        <path 
+                                            stroke-linecap="round" 
+                                            stroke-linejoin="round" 
+                                            stroke-width="2" 
+                                            d="M6 18L18 6M6 6l12 12">
+                                        </path>
+                                </svg>
+                            </button>   
+                        </div>
+                        <hr />
+                        <div class="py-6">
+                            ${type === 'newFolder' ? `
+                                <input 
+                                    type="text" 
+                                    placeholder="enter folder name"
+                                    class="px-4 py-2 rounded-lg placeholder-gray-900 w-full border border-gray-300 mb-1" 
+                                    required 
+                                    id="createNewInput">
+                            ` : ''}
+                            ${type === 'uploadFile' ? `
+                                <input 
+                                    type="file" 
+                                    placeholder="select file to upload"
+                                    class="px-4 py-2 rounded-lg placeholder-gray-900 w-full border border-gray-300 mb-1" 
+                                    required 
+                                    id="uploadFileInput">
+                            ` : ''}
+                            <span id="inputError" class="text-sm text-red-500 hidden block"></span>
+                            ${type === 'newFolder' ? `
+                                <button 
+                                    class="bg-indigo-600 px-4 rounded-lg text-sm text-white py-2 hover:bg-indigo-800 mt-4" 
+                                    onclick="createNew('folder')">
+                                        Create folder
+                                </button>
+                            ` : ''}
+                            ${type === 'uploadFile' ? `
+                                <button 
+                                    class="bg-indigo-600 px-4 rounded-lg text-sm text-white py-2 hover:bg-indigo-800 mt-4"
+                                    onclick="uploadFile()">
+                                        Upload file
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function closeModal() {
+            const modalDiv = document.querySelector('.modal');
+            modalDiv.classList.add('hidden');
+        }
+
+        /*
+        * Create table body
+        */
+        function createTableContent(folders = [], files = []) {
+            const tbody = document.querySelector('#tbody');
+            const breadcrumbs = document.querySelector('#breadcrumbs')
+            
+            let tr = document.createElement('tr');
+            let td = document.createElement('td');
+
+            breadcrumbs.innerHTML = state.current_path;
+
+            let svg = {
+                folder: 
+                    `<svg 
+                        class="w-6 h-6 mr-2 text-gray-900" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24" 
+                        xmlns="http://www.w3.org/2000/svg">
+                            <path 
+                                stroke-linecap="round" 
+                                stroke-linejoin="round" 
+                                stroke-width="2" 
+                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z">
+                            </path>
+                    </svg>`,
+                file:
+                    `<svg 
+                            class="w-6 h-6 mr-2" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24" 
+                            xmlns="http://www.w3.org/2000/svg">
+                                <path 
+                                    stroke-linecap="round" 
+                                    stroke-linejoin="round" 
+                                    stroke-width="2" 
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
+                                </path>
+                        </svg>`
+            };
+
+
+            tbody.innerHTML = `
+                ${state.current_path !== '/' ? `
+                    <tr class="hover:bg-gray-50">
+                        <td class="pl-4 pr-6 py-2 whitespace-nowrap text-sm flex items-center">
+                            <span class="cursor-pointer flex items-center bg-gray-200 px-4 py-1 rounded-lg hover:bg-gray-300 text-sm" onclick="goBack()">     
+                                <svg 
+                                    class="w-4 h-4 mr-2" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24" 
+                                    xmlns="http://www.w3.org/2000/svg">
+                                        <path 
+                                            stroke-linecap="round" 
+                                            stroke-linejoin="round" 
+                                            stroke-width="2" 
+                                            d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z">
+                                        </path>
+                                </svg>
+                                Go back
+                            </span>
+                        </td>
+                    </tr>
+                ` : ''}
+                ${folders.map(dir => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="pl-4 pr-6 py-2 whitespace-nowrap text-sm flex items-center">
+                            ${svg.folder}
+                            <span class="cursor-pointer hover:text-indigo-700" onclick="goTo('${dir}/')">
+                                ${dir}
+                            </span>
+                        </td>
+                    <tr>
+                    `).join('')}
+                ${files.map(file => `
+                    <tr class="hover:bg-gray-50 flex justify-between pr-48">
+                        <td class="pl-4 pr-6 py-2 whitespace-nowrap text-sm flex items-center">
+                            ${svg.file}
+                            <span>
+                                ${file}
+                            </span>
+                        </td>
+                        <td class="pl-4 pr-6 py-2 whitespace-nowrap flex items-center ">
+                            ${
+                                '/index.html' === state.current_path + file ||
+                                '/Readme.md' === state.current_path + file ||
+                                '/file_manager.php' === state.current_path + file 
+                             ? `
+                                <button 
+                                    class="cursor-pointer bg-green-100 text-xs text-green-600 px-4 py-1 rounded-md mr-2 hover:bg-green-200" 
+                                    onclick="downloadFile('${file}')">
+                                    Download
+                                </button>
+                                <button 
+                                    class="cursor-not-allowed bg-gray-200 text-xs text-gray-400 px-4 py-1 rounded-md">
+                                    Delete
+                                </button>
+                                ` : `
+                                <button 
+                                    class="cursor-pointer bg-green-100 text-xs text-green-600 px-4 py-1 rounded-md mr-2 hover:bg-green-200" 
+                                    onclick="downloadFile('${file}')">
+                                    Download
+                                </button>
+                                <button 
+                                    class="cursor-pointer bg-red-100 text-xs text-red-600 px-4 py-1 rounded-md " 
+                                    onclick="deleteFile('${file}')">
+                                    Delete
+                                </button>`}
+                        </td>
+                    <tr>
+                    `).join('')}
+                ${files.length === 0 && folders.length === 0 ? `
+                    <tr>
+                        <td class="pl-4 pr-6 py-8">
+                            <p class="text-xl tracking-tight text-center">this directory is empty</p>
+                        </td>
+                    <tr>
+                ` : ''}
+            `;
+        }
+
+        /*
+        * On page load check if state auth is true
+        */
+        if(state.auth === 'true' && state.authToken !== false) {
+            const loginSection = document.querySelector('#login-section');
+            loginSection.classList.add('hidden');
+            changeDirectory(state.home_path);
+        }
+    </script>
+</body>
+</html>
