@@ -11,6 +11,7 @@
 
     $path = isset($_POST['path']) ? $_POST['path'] : '';
 
+
     /**
      * Login
      */
@@ -21,29 +22,32 @@
         $response;
 
         if ($username === $fake_db['username'] && password_verify($password, $fake_db['password'])) {
-
             $response = [
                 'success' => true,
                 'data' => [
                     'authToken' => $fake_db['access_token']
                 ]
             ];
-
         } else {
             $response = ['success' => false];
-            $_SESSION['user'] = 0;
         }
 
         echo json_encode($response);
     } 
 
+
     /**
      * Logout
      */
     if (isset($_POST) && $_POST['action'] === 'logout') {
+        // if auth not fake some code would go here...
     } 
 
-    // on each request validate auth token
+
+    /**
+     * Check if auth token is supplied on each valid request
+     * and check whether token is valid for that users connection
+     */
     if(isset($_POST['authToken']) && $_POST['authToken'] === $fake_db['access_token']) {
 
         $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
@@ -62,9 +66,9 @@
 
 
     /**
-     * Catch all error
+     * Catch all requests that are not defined
+     * and return bad request message
     */
-
     if (
         isset($_POST) && 
         $_POST['action'] !== 'mkdir' && 
@@ -89,6 +93,7 @@
         private string $path;
         private string $action;
 
+
         /**
          * Return current path
          * 
@@ -98,6 +103,7 @@
         {
             return $this->path;
         }
+
 
         /**
          * Set current path
@@ -121,6 +127,7 @@
         {
             return $this->action;
         }
+
 
         /**
          * Set active action
@@ -203,6 +210,7 @@
             return $files;
         }
 
+
         /**
          * Create new directory
          *
@@ -215,8 +223,9 @@
             mkdir($new_dir_path);
         }
 
+
         /**
-         * Create new directory
+         * Delete file
          *
          * @return void
         */
@@ -226,6 +235,7 @@
 
             unlink($file_path);
         }
+
 
         /**
          * Download file
@@ -249,6 +259,7 @@
             }
         }
 
+
         /**
          * Upload file
          *
@@ -264,6 +275,7 @@
             }
         }
 
+        
         /**
          * JSON response to api call
          * 
