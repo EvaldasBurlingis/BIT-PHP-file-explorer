@@ -46,69 +46,18 @@
     // on each request validate auth token
     if(isset($_POST['authToken']) && $_POST['authToken'] === $fake_db['access_token']) {
 
+        $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
+        $fm->setAction($_POST['action']);
 
-        /**
-         * Change directory
-         */
-        if (isset($_POST) && $_POST['action'] === 'cd') {
-            $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
-    
-            $fm->setAction($_POST['action']);
-
-            echo $fm->getJsonResponse();
-        } 
-
-        /**
-         * Create new directory
-         */
-        if (isset($_POST) && $_POST['action'] === 'mkdir') {
-
-            $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
-
-            $fm->setAction($_POST['action']);
-            $fm->createNewDir($_POST['new_folder_name']);
-
-            echo $fm->getJsonResponse();
-        }
-
-        /**
-         * Delete file
-         */
-        if (isset($_POST) && $_POST['action'] === 'unlink') {
-
-            $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
-
-            $fm->setAction($_POST['action']);
-            $fm->deleteFile($_POST['filename']);
-
-            echo $fm->getJsonResponse();
-        }
-
-        /**
-         * Download file
-         */
-        if (isset($_POST) && $_POST['action'] === 'download') {
-
-            $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
-
-            $fm->setAction($_POST['action']);
-
-            echo $fm->downloadFile($_POST['filename']);
-        }
-
-        /**
-         * Upload file
-         */
-        if (isset($_POST) && $_POST['action'] === 'upload') {
-
-            $path === '/' ? $fm->setPath($cwd) : $fm->setPath(($cwd . $path));
-
-            $fm->setAction($_POST['action']);
-            
+        if (isset($_POST) && $_POST['action'] === 'mkdir') $fm->createNewDir($_POST['new_folder_name']);
+        if (isset($_POST) && $_POST['action'] === 'unlink') $fm->deleteFile($_POST['filename']);
+        if (isset($_POST) && $_POST['action'] === 'download') $fm->downloadFile($_POST['filename']);
+        if (isset($_POST) && $_POST['action'] === 'upload') {            
             if (isset($_FILES['file'])) $fm->uploadFile();
-                
-            echo $fm->getJsonResponse();
+            
         }
+
+        echo $fm->getJsonResponse();
     }
 
 
