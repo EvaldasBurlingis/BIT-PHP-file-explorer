@@ -90,8 +90,8 @@
     class FileManager
     {
         
-        private string $path;
-        private string $action;
+        private $path;
+        private $action;
 
 
         /**
