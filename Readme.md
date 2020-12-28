@@ -23,6 +23,10 @@ Functionality that must be implemented by objective requirements.
 
 ### Installation
 
+### NOTE !!!!
+
+PHP > 7.4.9 required, if using older PHP version use branch **pre74**
+
 - if php installed locally
 
 ```bash
